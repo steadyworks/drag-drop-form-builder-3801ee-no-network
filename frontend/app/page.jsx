@@ -1,0 +1,441 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { gsap } from 'gsap'
+
+// ============================================================
+// Constants
+// ============================================================
+
+const PALETTE_ITEMS = [
+  { type: 'text',     label: 'Text Input',       testId: 'palette-text' },
+  { type: 'number',  label: 'Number Input',     testId: 'palette-number' },
+  { type: 'email',   label: 'Email Input',      testId: 'palette-email' },
+  { type: 'dropdown', label: 'Dropdown Select', testId: 'palette-dropdown' },
+  { type: 'checkbox', label: 'Checkbox',        testId: 'palette-checkbox' },
+  { type: 'date',    label: 'Date Picker',      testId: 'palette-date' },
+]
+
+const FIELD_DEFAULTS = {
+  text:     'Text Input',
+  number:   'Number Input',
+  email:    'Email Input',
+  dropdown: 'Dropdown Select',
+  checkbox: 'Checkbox',
+  date:     'Date Picker',
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+function createField(type, id) {
+  return {
+    id,
+    type,
+    label: FIELD_DEFAULTS[type],
+    required: false,
+    placeholder: '',
+    options: '',
+    validation: {},
+  }
+}
+
+function validateField(field, value) {
+  const errors = []
+
+  // Required check
+  if (field.required) {
+    if (field.type === 'checkbox') {
+      if (!value) errors.push('This field is required.')
+    } else {
+      if (value === '' || value === null || value === undefined) {
+        errors.push('This field is required.')
+      }
+    }
+  }
+
+  // Email format
+  if (field.type === 'email' && value) {
+    if (!/^[^@]+@[^@]+\.[^@]+$/.test(value)) {
+      errors.push('Please enter a valid email address.')
+    }
+  }
+
+  // Text length
+  if (field.type === 'text' && value !== '') {
+    const len = (value || '').length
+    if (
+      field.validation.minLength !== undefined &&
+      field.validation.minLength !== '' &&
+      len < parseInt(field.validation.minLength, 10)
+    ) {
+      errors.push(`Minimum ${field.validation.minLength} characters required.`)
+    }
+    if (
+      field.validation.maxLength !== undefined &&
+      field.validation.maxLength !== '' &&
+      len > parseInt(field.validation.maxLength, 10)
+    ) {
+      errors.push(`Maximum ${field.validation.maxLength} characters allowed.`)
+    }
+  }
+
+  // Number range
+  if (field.type === 'number' && value !== '' && value !== null && value !== undefined) {
+    const num = parseFloat(value)
+    if (!isNaN(num)) {
+      if (field.validation.min !== undefined && field.validation.min !== '') {
+        if (num < parseFloat(field.validation.min)) {
+          errors.push(`Value must be at least ${field.validation.min}.`)
+        }
+      }
+      if (field.validation.max !== undefined && field.validation.max !== '') {
+        if (num > parseFloat(field.validation.max)) {
+          errors.push(`Value must be at most ${field.validation.max}.`)
+        }
+      }
+    }
+  }
+
+  // Date range
+  if (field.type === 'date' && value) {
+    if (field.validation.minDate && value < field.validation.minDate) {
+      errors.push(`Date must be on or after ${field.validation.minDate}.`)
+    }
+    if (field.validation.maxDate && value > field.validation.maxDate) {
+      errors.push(`Date must be on or before ${field.validation.maxDate}.`)
+    }
+  }
+
+  return errors
+}
+
+// ============================================================
+// FieldCard
+// ============================================================
+
+function FieldCard({ field, isSelected, onSelect, onDelete, onDragStart, onDragOver, onDrop }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (ref.current) {
+      gsap.from(ref.current, { opacity: 0, y: -8, duration: 0.25, ease: 'power2.out' })
+    }
+  }, [])
+
+  return (
+    <div
+      ref={ref}
+      className={`field-card${isSelected ? ' field-card--selected' : ''}`}
+      data-testid={`field-${field.id}`}
+      draggable
+      onClick={() => onSelect(field.id)}
+      onDragStart={(e) => onDragStart(e, field.id)}
+      onDragOver={onDragOver}
+      onDrop={(e) => onDrop(e, field.id)}
+    >
+      <div className="field-card-header">
+        <span className="field-type-badge">{field.type}</span>
+        <span className="field-card-label">{field.label || `(${FIELD_DEFAULTS[field.type]})`}</span>
+        {isSelected && (
+          <button
+            data-testid="delete-field-btn"
+            className="delete-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(field.id)
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// ConfigPanel
+// ============================================================
+
+function ConfigPanel({ field, onUpdate, onUpdateValidation }) {
+  const showPlaceholder = ['text', 'number', 'email'].includes(field.type)
+  const showOptions = field.type === 'dropdown'
+  const hasValidation = ['text', 'number', 'date'].includes(field.type)
+
+  return (
+    <div className="config-panel" data-testid="config-panel">
+      <h3>Configure Field</h3>
+
+      {/* Label */}
+      <div className="config-group">
+        <label className="config-label-text">Label</label>
+        <input
+          type="text"
+          data-testid="config-label"
+          value={field.label}
+          onChange={(e) => onUpdate({ label: e.target.value })}
+        />
+      </div>
+
+      {/* Required */}
+      <div className="config-group">
+        <label className="config-checkbox-label">
+          <input
+            type="checkbox"
+            data-testid="config-required"
+            checked={field.required}
+            onChange={(e) => onUpdate({ required: e.target.checked })}
+          />
+          Required
+        </label>
+      </div>
+
+      {/* Placeholder */}
+      {showPlaceholder && (
+        <div className="config-group">
+          <label className="config-label-text">Placeholder</label>
+          <input
+            type="text"
+            data-testid="config-placeholder"
+            value={field.placeholder}
+            onChange={(e) => onUpdate({ placeholder: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* Options (dropdown only) */}
+      {showOptions && (
+        <div className="config-group">
+          <label className="config-label-text">Options (comma-separated)</label>
+          <input
+            type="text"
+            data-testid="config-options"
+            value={field.options}
+            onChange={(e) => onUpdate({ options: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* Validation Rules */}
+      {hasValidation && (
+        <div className="config-group" data-testid="config-validation">
+          <span className="config-section-title">Validation Rules</span>
+
+          {field.type === 'text' && (
+            <>
+              <div className="validation-row">
+                <label>Min Length</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={field.validation.minLength ?? ''}
+                  onChange={(e) => onUpdateValidation('minLength', e.target.value)}
+                />
+              </div>
+              <div className="validation-row">
+                <label>Max Length</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={field.validation.maxLength ?? ''}
+                  onChange={(e) => onUpdateValidation('maxLength', e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {field.type === 'number' && (
+            <>
+              <div className="validation-row">
+                <label>Min Value</label>
+                <input
+                  type="number"
+                  value={field.validation.min ?? ''}
+                  onChange={(e) => onUpdateValidation('min', e.target.value)}
+                />
+              </div>
+              <div className="validation-row">
+                <label>Max Value</label>
+                <input
+                  type="number"
+                  value={field.validation.max ?? ''}
+                  onChange={(e) => onUpdateValidation('max', e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {field.type === 'date' && (
+            <>
+              <div className="validation-row">
+                <label>Min Date</label>
+                <input
+                  type="date"
+                  value={field.validation.minDate ?? ''}
+                  onChange={(e) => onUpdateValidation('minDate', e.target.value)}
+                />
+              </div>
+              <div className="validation-row">
+                <label>Max Date</label>
+                <input
+                  type="date"
+                  value={field.validation.maxDate ?? ''}
+                  onChange={(e) => onUpdateValidation('maxDate', e.target.value)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// PreviewForm
+// ============================================================
+
+function PreviewForm({ fields }) {
+  const [values, setValues] = useState({})
+  const [errors, setErrors] = useState({})
+  const [submitSuccess, setSubmitSuccess] = useState(null)
+
+  // Reset state whenever fields change (e.g. switching to Preview mode)
+  useEffect(() => {
+    const init = {}
+    fields.forEach((f) => {
+      init[f.id] = f.type === 'checkbox' ? false : ''
+    })
+    setValues(init)
+    setErrors({})
+    setSubmitSuccess(null)
+  }, [fields])
+
+  const setValue = (id, val) => setValues((prev) => ({ ...prev, [id]: val }))
+
+  const handleSubmit = () => {
+    const newErrors = {}
+    let hasError = false
+
+    fields.forEach((f) => {
+      const val = values[f.id] !== undefined ? values[f.id] : (f.type === 'checkbox' ? false : '')
+      const errs = validateField(f, val)
+      if (errs.length > 0) {
+        newErrors[f.id] = errs
+        hasError = true
+      }
+    })
+
+    setErrors(newErrors)
+
+    if (!hasError) {
+      const parts = fields.map((f) => {
+        const val = values[f.id]
+        const display = f.type === 'checkbox' ? (val ? 'Yes' : 'No') : (val ?? '')
+        return `${f.label}: ${display}`
+      })
+      setSubmitSuccess(parts.join(' | '))
+    } else {
+      setSubmitSuccess(null)
+    }
+  }
+
+  const renderControl = (field) => {
+    const value = values[field.id] !== undefined
+      ? values[field.id]
+      : (field.type === 'checkbox' ? false : '')
+
+    if (field.type === 'text' || field.type === 'number' || field.type === 'email') {
+      return (
+        <input
+          type={field.type}
+          data-testid={`preview-${field.id}`}
+          value={value}
+          placeholder={field.placeholder || ''}
+          onChange={(e) => setValue(field.id, e.target.value)}
+        />
+      )
+    }
+
+    if (field.type === 'checkbox') {
+      return (
+        <div className="preview-checkbox-wrapper">
+          <input
+            type="checkbox"
+            data-testid={`preview-${field.id}`}
+            checked={value}
+            onChange={(e) => setValue(field.id, e.target.checked)}
+          />
+        </div>
+      )
+    }
+
+    if (field.type === 'dropdown') {
+      const opts = field.options
+        ? field.options.split(',').map((o) => o.trim()).filter(Boolean)
+        : []
+      return (
+        <select
+          data-testid={`preview-${field.id}`}
+          value={value}
+          onChange={(e) => setValue(field.id, e.target.value)}
+        >
+          <option value="">Select an option</option>
+          {opts.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      )
+    }
+
+    if (field.type === 'date') {
+      return (
+        <input
+          type="date"
+          data-testid={`preview-${field.id}`}
+          value={value}
+          onChange={(e) => setValue(field.id, e.target.value)}
+        />
+      )
+    }
+
+    return null
+  }
+
+  return (
+    <div className="preview-form">
+      {fields.length === 0 && (
+        <p className="preview-empty">No fields yet. Switch to Build mode to add fields.</p>
+      )}
+
+      {fields.map((field) => (
+        <div key={field.id} className="preview-field">
+          <label className="preview-label">
+            {field.label}{field.required ? ' *' : ''}
+          </label>
+          {renderControl(field)}
+          {errors[field.id]?.length > 0 && (
+            <span data-testid={`error-${field.id}`} className="error-msg">
+              {errors[field.id][0]}
+            </span>
+          )}
+        </div>
+      ))}
+
+      <button data-testid="submit-btn" className="submit-btn" onClick={handleSubmit}>
+        Submit
+      </button>
+
+      {submitSuccess && (
+        <div data-testid="submit-success" className="success-msg">
+          <strong>Form submitted successfully!</strong>
+          <p>{submitSuccess}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* TODO */
